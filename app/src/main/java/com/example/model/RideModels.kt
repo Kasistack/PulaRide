@@ -5,8 +5,8 @@ import com.example.ui.components.SimulatedDriver
 data class LocationItem(
     val name: String,
     val landmarkName: String,
-    val latOffset: Float,
-    val lngOffset: Float,
+    val lat: Double,
+    val lng: Double,
     val setsName: String = name // Setswana localized name
 )
 

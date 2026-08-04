@@ -1,0 +1,6 @@
+{
+  "name": "PulaRide",
+  "description": "Premium ride-hailing app for Botswana with 'Offer Your Fare' bidding system, local payments, and Setswana support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

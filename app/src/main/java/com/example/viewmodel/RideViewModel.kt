@@ -69,15 +69,15 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
 
     // Location choices in Gabs
     val locationsInGabs = listOf(
-        LocationItem("Sir Seretse Khama International Airport", "SSKB Airport", -0.8f, -0.3f, "Lepatlelo la Lifofane la SSKB"),
-        LocationItem("CBD (Three Dikgosi Monument)", "Central Business District", -0.1f, -0.35f, "Sebeletso sa Dikgosi Tse Tharo"),
-        LocationItem("Main Mall, Gaborone", "Main Mall", 0.05f, -0.05f, "Main Mall Gaborone"),
-        LocationItem("University of Botswana (UB)", "UB Campus", 0.15f, 0.25f, "Mmadikolo (UB)"),
-        LocationItem("Riverwalk Mall", "Riverwalk East", 0.35f, 0.55f, "Riverwalk Mall"),
-        LocationItem("Airport Junction Mall", "Airport Junction", -0.45f, -0.1f, "Mabenkele a Airport Junction"),
-        LocationItem("Gaborone Game Reserve", "Broadhurst East", -0.1f, 0.8f, "Lefelo la Diphologolo"),
-        LocationItem("Gaborone Dam", "Dam Site", 0.7f, 0.4f, "Letamo la Gaborone"),
-        LocationItem("Government Enclave", "Parliament & Offices", -0.05f, -0.15f, "Lefelo la Puso")
+        LocationItem("Sir Seretse Khama International Airport", "SSKB Airport", -24.6282, 25.9243, "Lepatlelo la Lifofane la SSKB"),
+        LocationItem("CBD (Three Dikgosi Monument)", "Central Business District", -24.6565, 25.9119, "Sebeletso sa Dikgosi Tse Tharo"),
+        LocationItem("Main Mall, Gaborone", "Main Mall", -24.6551, 25.9138, "Main Mall Gaborone"),
+        LocationItem("University of Botswana (UB)", "UB Campus", -24.6694, 25.9229, "Mmadikolo (UB)"),
+        LocationItem("Riverwalk Mall", "Riverwalk East", -24.6792, 25.9570, "Riverwalk Mall"),
+        LocationItem("Airport Junction Mall", "Airport Junction", -24.6468, 25.9266, "Mabenkele a Airport Junction"),
+        LocationItem("Gaborone Game Reserve", "Broadhurst East", -24.6739, 25.9066, "Lefelo la Diphologolo"),
+        LocationItem("Gaborone Dam", "Dam Site", -24.6430, 25.8750, "Letamo la Gaborone"),
+        LocationItem("Government Enclave", "Parliament & Offices", -24.6566, 25.9132, "Lefelo la Puso")
     )
 
     // Current selected route locations
@@ -300,8 +300,8 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
         val d = _dropoff.value
         if (p != null && d != null) {
             // Distance approximation based on lat/lng offset
-            val dx = p.lngOffset - d.lngOffset
-            val dy = p.latOffset - d.latOffset
+            val dx = p.lng - d.lng
+            val dy = p.lat - d.lat
             val distance = kotlin.math.sqrt(dx * dx + dy * dy)
             // Suggested fare: 30 Pula base + 50 Pula per distance unit
             _suggestedFare.value = (30.0 + distance * 55.0).coerceIn(35.0, 150.0)

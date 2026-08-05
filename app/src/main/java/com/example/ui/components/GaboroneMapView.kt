@@ -33,12 +33,6 @@ fun GaboroneMapView(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var mapView by remember { mutableStateOf<MapView?>(null) }
-    var hasLocationPermission by remember {
-        mutableStateOf(
-            ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
@@ -92,10 +86,4 @@ fun GaboroneMapView(
             }
         }
     )
-
-    LaunchedEffect(hasLocationPermission) {
-        if (hasLocationPermission) {
-            mapView?.isMyLocationEnabled = true
-        }
-    }
 }

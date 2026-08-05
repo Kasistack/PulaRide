@@ -14,6 +14,15 @@ import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.overlay.Polyline
 
+data class SimulatedDriver(
+    val id: String,
+    val name: String,
+    val baseLat: Float,
+    val baseLng: Float,
+    val angleSeed: Float,
+    val color: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color(0xFF2B9BEF)
+)
+
 @Composable
 fun GaboroneMapView(
     modifier: Modifier = Modifier,
@@ -86,7 +95,7 @@ fun GaboroneMapView(
 
     LaunchedEffect(hasLocationPermission) {
         if (hasLocationPermission) {
-            mapView?.isMyLocationEnabled = true
+            mapView?.myLocationEnabled = true
         }
     }
 }

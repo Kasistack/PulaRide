@@ -108,7 +108,8 @@ fun GaboroneMapView(
         val hasCoarse = ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (hasFine || hasCoarse) {
             try {
-                locationManager?.requestLocationUpdates(
+                val lm = locationManager
+            lm.requestLocationUpdates(
                     LocationManager.GPS_PROVIDER,
                     1000L,   // 1 second min interval
                     5f,      // 5 meters min distance

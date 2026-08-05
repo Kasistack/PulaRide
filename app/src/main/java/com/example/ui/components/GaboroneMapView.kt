@@ -3,6 +3,9 @@ package com.example.ui.components
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -33,6 +36,8 @@ fun GaboroneMapView(
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     var mapView by remember { mutableStateOf<MapView?>(null) }
+    var userLocation by remember { mutableStateOf<GeoPoint?>(null) }
+
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
@@ -84,6 +89,46 @@ fun GaboroneMapView(
                 }
                 view.overlays.add(route)
             }
+
+            // Draw user's real GPS location dot if available
+            userLocation?.let { loc ->
+                val userMarker = Marker(view).apply {
+                    position = loc
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                }
+                view.overlays.add(userMarker)
+            }
         }
     )
+
+    // Request real GPS location updates
+    LaunchedEffect(Unit) {
+        val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        val hasFine = ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (hasFine || hasCoarse) {
+            try {
+                locationManager?.requestLocationUpdates(
+                    LocationManager.GPS_PROVIDER,
+                    1000L,   // 1 second min interval
+                    5f,      // 5 meters min distance
+                    object : LocationListener {
+                        override fun onLocationChanged(location: Location) {
+                            userLocation = GeoPoint(location.latitude, location.longitude)
+                            mapView?.controller?.animateTo(GeoPoint(location.latitude, location.longitude))
+                        }
+                        override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+                        override fun onProviderEnabled(provider: String) {}
+                        override fun onProviderDisabled(provider: String) {}
+                    }
+                )
+                // Also get last known location for quick display
+                locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)?.let { last ->
+                    userLocation = GeoPoint(last.latitude, last.longitude)
+                }
+            } catch (e: SecurityException) {
+                // Permission not granted at runtime, skip
+            }
+        }
+    }
 }

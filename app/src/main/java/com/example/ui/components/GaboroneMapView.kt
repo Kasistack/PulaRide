@@ -95,7 +95,7 @@ fun GaboroneMapView(
 
     LaunchedEffect(hasLocationPermission) {
         if (hasLocationPermission) {
-            mapView?.myLocationEnabled = true
+            mapView?.isMyLocationEnabled = true
         }
     }
 }

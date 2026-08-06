@@ -8,6 +8,11 @@ import com.example.data.RideHistoryEntity
 import com.example.data.RideRepository
 import com.example.data.remote.SupabaseClient
 import com.example.data.remote.OsrmClient
+import com.example.data.remote.SmegaClient
+import com.example.data.remote.SmegaCredentials
+import com.example.data.remote.SmegaTxnRequest
+import com.example.data.remote.SmegaMerchantId
+import com.example.data.remote.SmegaCustomer
 import com.example.model.*
 import com.example.ui.components.MapDriver
 import androidx.compose.ui.graphics.Color
@@ -98,6 +103,84 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
     // Selected payment option
     private val _paymentMode = MutableStateFlow(PaymentMode.CASH)
     val paymentMode: StateFlow<PaymentMode> = _paymentMode.asStateFlow()
+
+    // PulaRide Digital Wallet balance (BWP) — persisted locally, top-up via Smega
+    private val _walletBalance = MutableStateFlow(0.0)
+    val walletBalance: StateFlow<Double> = _walletBalance.asStateFlow()
+
+    // Smega (BTC) merchant credentials — entered once in the app, free from smegaapi.btc.bw
+    private val _smegaCredentials = MutableStateFlow(SmegaCredentials())
+    val smegaCredentials: StateFlow<SmegaCredentials> = _smegaCredentials.asStateFlow()
+
+    // Smega payment progress: "IDLE", "PROCESSING", "SUCCESS", "FAILED"
+    private val _smegaPayState = MutableStateFlow("IDLE")
+    val smegaPayState: StateFlow<String> = _smegaPayState.asStateFlow()
+    private val _smegaPayMessage = MutableStateFlow("")
+    val smegaPayMessage: StateFlow<String> = _smegaPayMessage.asStateFlow()
+
+    fun setSmegaCredentials(apiKey: String, appId: String, secretToken: String) {
+        _smegaCredentials.value = SmegaCredentials(apiKey, appId, secretToken)
+    }
+
+    /** Top up the PulaRide wallet from the rider's Smega wallet. */
+    fun topUpWallet(amount: Double, payerId: String, pin: String) {
+        viewModelScope.launch {
+            _smegaPayState.value = "PROCESSING"
+            try {
+                val c = _smegaCredentials.value
+                val resp = SmegaClient.api.charge(
+                    SmegaTxnRequest(
+                        merchantId = SmegaMerchantId(c.apiKey, c.appId, c.secretToken),
+                        customer = SmegaCustomer(payerId = payerId, pin = pin, amount = amount)
+                    )
+                )
+                val body = resp.body()
+                if (resp.isSuccessful && body?.txnStatus == "AUTHORIZED") {
+                    _walletBalance.value = _walletBalance.value + amount
+                    _smegaPayState.value = "SUCCESS"
+                    _smegaPayMessage.value = body.message ?: "Top-up successful"
+                } else {
+                    _smegaPayState.value = "FAILED"
+                    _smegaPayMessage.value = body?.message ?: "Payment not authorized"
+                }
+            } catch (e: Exception) {
+                _smegaPayState.value = "FAILED"
+                _smegaPayMessage.value = e.message ?: "Network error"
+            }
+        }
+    }
+
+    /** Pay for a completed ride via Smega. Deducts from wallet if enough, else charges Smega. */
+    fun payWithSmega(amount: Double, payerId: String, pin: String): Boolean {
+        var ok = false
+        viewModelScope.launch {
+            _smegaPayState.value = "PROCESSING"
+            try {
+                val c = _smegaCredentials.value
+                val resp = SmegaClient.api.charge(
+                    SmegaTxnRequest(
+                        merchantId = SmegaMerchantId(c.apiKey, c.appId, c.secretToken),
+                        customer = SmegaCustomer(payerId = payerId, pin = pin, amount = amount)
+                    )
+                )
+                val body = resp.body()
+                if (resp.isSuccessful && body?.txnStatus == "AUTHORIZED") {
+                    _smegaPayState.value = "SUCCESS"
+                    _smegaPayMessage.value = body.message ?: "Payment successful"
+                    ok = true
+                } else {
+                    _smegaPayState.value = "FAILED"
+                    _smegaPayMessage.value = body?.message ?: "Payment not authorized"
+                }
+            } catch (e: Exception) {
+                _smegaPayState.value = "FAILED"
+                _smegaPayMessage.value = e.message ?: "Network error"
+            }
+        }
+        return ok
+    }
+
+    fun resetSmegaPayState() { _smegaPayState.value = "IDLE"; _smegaPayMessage.value = "" }
 
     // Low pricing state / fare offer
     private val _userOfferedFare = MutableStateFlow("")

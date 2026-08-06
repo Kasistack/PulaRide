@@ -16,9 +16,18 @@ enum class PaymentMode(val displayName: String, val providerName: String) {
     CASH("Cash / Ke madi", "Cash"),
     ORANGE_MONEY("Orange Money", "Orange Botswana"),
     MY_ZAKA("MyZaka (Mascom)", "Mascom Wireless"),
-    CARD("Visa/Mastercard", "Direct Debit"),
+    SMEGA("Smega", "BTC Mobile Money"),
     WALLET("Digital Wallet", "PulaRide Wallet")
 }
+
+/** Smega merchant credentials (free, from https://smegaapi.btc.bw after register). */
+data class SmegaCredentials(
+    val apiKey: String = "",        // WalletGateway.xxxx
+    val appId: String = "",         // your app id
+    val secretToken: String = ""    // your secret token
+)
+
+val PaymentMode.isSmega: Boolean get() = this == PaymentMode.SMEGA
 
 data class DriverOffer(
     val driverId: String,

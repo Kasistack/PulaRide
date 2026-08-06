@@ -1610,6 +1610,12 @@ fun PaymentsScreen(viewModel: RideViewModel) {
     val lang by viewModel.language.collectAsState()
     val activePayment by viewModel.paymentMode.collectAsState()
     val profile by viewModel.profile.collectAsState()
+    val walletBalance by viewModel.walletBalance.collectAsState()
+    val smegaPayState by viewModel.smegaPayState.collectAsState()
+    val smegaPayMessage by viewModel.smegaPayMessage.collectAsState()
+
+    var showSmegaTopUp by remember { mutableStateOf(false) }
+    var showSmegaCreds by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -1660,7 +1666,7 @@ fun PaymentsScreen(viewModel: RideViewModel) {
 
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
-                        text = profile.balance.toInt().toString(),
+                        text = walletBalance.toInt().toString(),
                         color = Color.White,
                         fontSize = 36.sp,
                         fontWeight = FontWeight.Black
@@ -1678,12 +1684,24 @@ fun PaymentsScreen(viewModel: RideViewModel) {
                 Spacer(modifier = Modifier.height(14.dp))
 
                 Button(
-                    onClick = { /* Top up wallet dialog */ },
+                    onClick = { showSmegaTopUp = true },
                     colors = ButtonDefaults.buttonColors(containerColor = Color.White),
                     shape = RoundedCornerShape(8.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
                 ) {
                     Text("Top Up / Tsenya Madi", color = Color(0xFF003087), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Smega merchant credential setup (free, once)
+                OutlinedButton(
+                    onClick = { showSmegaCreds = true },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                ) {
+                    Text("Set Smega", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -1731,6 +1749,7 @@ fun PaymentsScreen(viewModel: RideViewModel) {
                                             PaymentMode.ORANGE_MONEY -> Color(0xFFFF6600) // Orange Money
                                             PaymentMode.MY_ZAKA -> Color(0xFFFFCC00) // Mascom Yellow
                                             PaymentMode.CASH -> Color(0xFF10B981) // Green Cash
+                                            PaymentMode.SMEGA -> Color(0xFF003087) // BTC Blue
                                             else -> Color(0xFF2B9BEF)
                                         },
                                         CircleShape
@@ -1739,8 +1758,8 @@ fun PaymentsScreen(viewModel: RideViewModel) {
                             ) {
                                 Icon(
                                     imageVector = when (mode) {
-                                        PaymentMode.CARD -> Icons.Default.CreditCard
                                         PaymentMode.CASH -> Icons.Default.AttachMoney
+                                        PaymentMode.SMEGA -> Icons.Default.AccountBalanceWallet
                                         else -> Icons.Default.AccountBalanceWallet
                                     },
                                     contentDescription = null,
@@ -1778,8 +1797,98 @@ fun PaymentsScreen(viewModel: RideViewModel) {
                 }
             }
         }
+
+        if (showSmegaTopUp) {
+            SmegaTopUpDialog(
+                viewModel = viewModel,
+                onDismiss = { showSmegaTopUp = false }
+            )
+        }
+
+        if (showSmegaCreds) {
+            SmegaCredentialsDialog(
+                viewModel = viewModel,
+                onDismiss = { showSmegaCreds = false }
+            )
+        }
     }
 }
+
+@Composable
+fun SmegaCredentialsDialog(viewModel: RideViewModel, onDismiss: () -> Unit) {
+    val creds by viewModel.smegaCredentials.collectAsState()
+    val lang by viewModel.language.collectAsState()
+    var apiKey by remember { mutableStateOf(creds.apiKey) }
+    var appId by remember { mutableStateOf(creds.appId) }
+    var secret by remember { mutableStateOf(creds.secretToken) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = {
+                viewModel.setSmegaCredentials(apiKey.trim(), appId.trim(), secret.trim())
+                onDismiss()
+            }) { Text("Save", color = Color(0xFF2B9BEF)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        title = { Text("Smega Merchant (BTC)", color = Color.White) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Free from smegaapi.btc.bw after registering. Your API key, app id and secret token.", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+                OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("API Key (WalletGateway.xxxx)") }, singleLine = true, colors = tfColors())
+                OutlinedTextField(value = appId, onValueChange = { appId = it }, label = { Text("App ID") }, singleLine = true, colors = tfColors())
+                OutlinedTextField(value = secret, onValueChange = { secret = it }, label = { Text("Secret Token") }, singleLine = true, colors = tfColors())
+            }
+        },
+        containerColor = Color(0xFF1E293B)
+    )
+}
+
+@Composable
+fun SmegaTopUpDialog(viewModel: RideViewModel, onDismiss: () -> Unit) {
+    val payState by viewModel.smegaPayState.collectAsState()
+    val payMsg by viewModel.smegaPayMessage.collectAsState()
+    var amount by remember { mutableStateOf("50") }
+    var payerId by remember { mutableStateOf("") }
+    var pin by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = { if (payState != "PROCESSING") onDismiss() },
+        confirmButton = {
+            TextButton(
+                enabled = payState != "PROCESSING",
+                onClick = {
+                    val amt = amount.toDoubleOrNull() ?: 0.0
+                    if (amt > 0 && payerId.isNotBlank() && pin.isNotBlank()) {
+                        viewModel.topUpWallet(amt, payerId.trim(), pin.trim())
+                    }
+                }
+            ) { Text(if (payState == "PROCESSING") "Processing..." else "Pay with Smega", color = Color(0xFF2B9BEF)) }
+        },
+        dismissButton = { TextButton(enabled = payState != "PROCESSING", onClick = onDismiss) { Text("Close") } },
+        title = { Text("Top Up Wallet via Smega", color = Color.White) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Amount (BWP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, colors = tfColors())
+                OutlinedTextField(value = payerId, onValueChange = { payerId = it }, label = { Text("Smega number (7xxxxxxxxx)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), singleLine = true, colors = tfColors())
+                OutlinedTextField(value = pin, onValueChange = { pin = it }, label = { Text("Smega PIN") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), singleLine = true, colors = tfColors())
+                if (payState == "SUCCESS") Text(payMsg, color = Color(0xFF10B981), fontSize = 12.sp)
+                if (payState == "FAILED") Text(payMsg, color = Color(0xFFFF5555), fontSize = 12.sp)
+            }
+        },
+        containerColor = Color(0xFF1E293B)
+    )
+}
+
+@Composable
+private fun tfColors() = OutlinedTextFieldDefaults.colors(
+    focusedTextColor = Color.White,
+    unfocusedTextColor = Color.White,
+    focusedBorderColor = Color(0xFF2B9BEF),
+    unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
+    focusedLabelColor = Color(0xFF2B9BEF),
+    unfocusedLabelColor = Color.White.copy(alpha = 0.4f)
+)
 
 // 8. DRIVER MODE DASHBOARD SCREEN (online/offline driver app simulation)
 @Composable

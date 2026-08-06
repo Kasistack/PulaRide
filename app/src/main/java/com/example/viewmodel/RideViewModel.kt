@@ -492,7 +492,7 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
         if (reqId != null && riderId != null) {
             viewModelScope.launch {
                 try {
-                    SupabaseClient.api.createRide(
+                    val resp = SupabaseClient.api.createRide(
                         SupabaseClient.authHeader(),
                         body = com.example.data.remote.RideInsert(
                             requestId = reqId,
@@ -501,6 +501,7 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
                             fare = offer.offeredBid
                         )
                     )
+                    activeRideId = resp.body()?.firstOrNull()?.id
                 } catch (e: Exception) { /* offline: local history still records below */ }
             }
         }

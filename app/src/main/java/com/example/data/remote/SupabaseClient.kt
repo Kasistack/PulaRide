@@ -166,6 +166,11 @@ data class MessageInsert(
 )
 
 @JsonClass(generateAdapter = true)
+data class RideCreatedRow(
+    val id: String? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class RideInsert(
     @Json(name = "request_id") val requestId: String,
     @Json(name = "driver_id") val driverId: String,
@@ -228,7 +233,7 @@ interface SupabaseApi {
         @Header("Authorization") bearer: String,
         @Header("Prefer") prefer: String = "return=representation",
         @Body body: RideInsert
-    ): Response<List<RideRequestRow>>
+    ): Response<List<RideCreatedRow>>
 
     @GET("/rest/v1/messages")
     suspend fun getMessages(

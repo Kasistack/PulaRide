@@ -6,14 +6,15 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
 import com.example.data.RideHistoryEntity
 import com.example.data.RideRepository
+import com.example.data.remote.SupabaseClient
+import com.example.data.remote.OsrmClient
 import com.example.model.*
+import com.example.ui.components.MapDriver
 import androidx.compose.ui.graphics.Color
-import com.example.ui.components.SimulatedDriver
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 
 class RideViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -67,17 +68,17 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
     private val _isOtpSent = MutableStateFlow(false)
     val isOtpSent: StateFlow<Boolean> = _isOtpSent.asStateFlow()
 
-    // Location choices in Gabs
+    // Location choices in Palapye
     val locationsInGabs = listOf(
-        LocationItem("Sir Seretse Khama International Airport", "SSKB Airport", -24.6282, 25.9243, "Lepatlelo la Lifofane la SSKB"),
-        LocationItem("CBD (Three Dikgosi Monument)", "Central Business District", -24.6565, 25.9119, "Sebeletso sa Dikgosi Tse Tharo"),
-        LocationItem("Main Mall, Gaborone", "Main Mall", -24.6551, 25.9138, "Main Mall Gaborone"),
-        LocationItem("University of Botswana (UB)", "UB Campus", -24.6694, 25.9229, "Mmadikolo (UB)"),
-        LocationItem("Riverwalk Mall", "Riverwalk East", -24.6792, 25.9570, "Riverwalk Mall"),
-        LocationItem("Airport Junction Mall", "Airport Junction", -24.6468, 25.9266, "Mabenkele a Airport Junction"),
-        LocationItem("Gaborone Game Reserve", "Broadhurst East", -24.6739, 25.9066, "Lefelo la Diphologolo"),
-        LocationItem("Gaborone Dam", "Dam Site", -24.6430, 25.8750, "Letamo la Gaborone"),
-        LocationItem("Government Enclave", "Parliament & Offices", -24.6566, 25.9132, "Lefelo la Puso")
+        LocationItem("Palapye CBD", "Palapye Centre", -22.5465, 27.1145, "Bohikeng jwa Palapye"),
+        LocationItem("Palapye Railway Station", "Station", -22.5400, 27.1230, "Seteishene sa Terene"),
+        LocationItem("Palapye Industrial Area", "Industrial", -22.5600, 27.1000, "Lefelo la Ditiro"),
+        LocationItem("Bothapatlou Ward", "Bothapatlou", -22.5530, 27.1080, "Bothapatlou"),
+        LocationItem("Moiyabana Junction", "Moiyabana", -22.5300, 27.0900, "Moiyabana"),
+        LocationItem("Palapye Hospital", "Hospital", -22.5480, 27.1280, "Sepetlele sa Palapye"),
+        LocationItem("Palapye Stadium", "Stadium", -22.5440, 27.1180, "Lebala la Metshameko"),
+        LocationItem("Supa Ngwato Mall", "Supa Ngwato", -22.5470, 27.1150, "Mabenkele a Supa Ngwato"),
+        LocationItem("Palapye Police Station", "Police", -22.5490, 27.1120, "Mapodisi a Palapye")
     )
 
     // Current selected route locations
@@ -198,13 +199,69 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
     private val _activeDriverRequest = MutableStateFlow<Map<String, String>?>(null)
     val activeDriverRequest: StateFlow<Map<String, String>?> = _activeDriverRequest.asStateFlow()
 
-    // Simulated nearby cabs moving on the map
-    val nearbyDriversMap = listOf(
-        SimulatedDriver("d1", "Moffat", -0.05f, -0.4f, 0.5f),
-        SimulatedDriver("d2", "Tiro", 0.1f, -0.05f, 1.2f),
-        SimulatedDriver("d3", "Neo (Female Driver)", 0.2f, 0.3f, 2.5f, Color(0xFFE02424)), // Red for highlight
-        SimulatedDriver("d4", "Ofilwe", -0.3f, -0.15f, 4.0f)
-    )
+    // Live nearby drivers pulled from the real Supabase backend.
+    private val _mapDrivers = MutableStateFlow<List<MapDriver>>(emptyList())
+    val mapDrivers: StateFlow<List<MapDriver>> = _mapDrivers.asStateFlow()
+
+    private var driverPollJob: Job? = null
+
+    fun startDriverFeed() {
+        driverPollJob?.cancel()
+        driverPollJob = viewModelScope.launch {
+            while (true) {
+                try {
+                    val resp = SupabaseClient.api.getAvailableDrivers(SupabaseClient.authHeader())
+                    if (resp.isSuccessful) {
+                        _mapDrivers.value = (resp.body() ?: emptyList()).mapNotNull { d ->
+                            if (d.lat != null && d.lng != null) {
+                                MapDriver(
+                                    id = d.id ?: d.userId ?: "",
+                                    name = d.name ?: "Driver",
+                                    lat = d.lat,
+                                    lng = d.lng,
+                                    isFemale = d.isFemale ?: false
+                                )
+                            } else null
+                        }
+                    }
+                } catch (e: Exception) {
+                    // network error; keep last known drivers
+                }
+                delay(5000) // poll every 5s for live positions
+            }
+        }
+    }
+
+    fun stopDriverFeed() {
+        driverPollJob?.cancel()
+    }
+
+    fun reportDriverLocation(lat: Double, lng: Double) {
+        val uid = currentUserId() ?: return
+        viewModelScope.launch {
+            try {
+                SupabaseClient.api.upsertDriver(
+                    SupabaseClient.authHeader(),
+                    body = com.example.data.remote.DriverUpsert(
+                        userId = uid,
+                        name = _profile.value.name,
+                        lat = lat,
+                        lng = lng,
+                        available = true,
+                        vehicleModel = "Toyota Corolla",
+                        vehiclePlate = "B 000 AAA",
+                        rating = 4.8,
+                        isFemale = false
+                    )
+                )
+            } catch (e: Exception) { /* ignore offline */ }
+        }
+    }
+
+    private fun currentUserId(): String? = _currentUserId.value
+
+    private val _currentUserId = MutableStateFlow<String?>(null)
+    val currentUserIdFlow: StateFlow<String?> = _currentUserId.asStateFlow()
 
     private var rideSimulationJob: Job? = null
     private var driverBidSimulationJob: Job? = null
@@ -244,18 +301,44 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun sendOtp() {
-        if (_loginPhone.value.isNotBlank()) {
-            _isOtpSent.value = true
+        val phone = _loginPhone.value
+        if (phone.isNotBlank()) {
+            // Use phone as email alias for Supabase Auth (no SMS cost): <phone>@pularide.local
+            val email = "$phone@pularide.local"
+            viewModelScope.launch {
+                try {
+                    val resp = SupabaseClient.api.sendOtp(
+                        com.example.data.remote.AuthOtpRequest(email = email)
+                    )
+                    _isOtpSent.value = resp.isSuccessful
+                } catch (e: Exception) {
+                    _isOtpSent.value = false
+                }
+            }
         }
     }
 
-    fun setOtpCode(code: String) {
-        _otpCode.value = code
-    }
-
     fun verifyOtp() {
-        if (_otpCode.value == "8392" || _otpCode.value.length == 4 || _otpCode.value.length == 6) {
-            _currentScreen.value = "HOME"
+        val phone = _loginPhone.value
+        val code = _otpCode.value
+        if (phone.isNotBlank() && code.isNotBlank()) {
+            val email = "$phone@pularide.local"
+            viewModelScope.launch {
+                try {
+                    val resp = SupabaseClient.api.verifyOtp(
+                        com.example.data.remote.AuthVerifyRequest(email = email, token = code)
+                    )
+                    if (resp.isSuccessful) {
+                        val session = resp.body()
+                        SupabaseClient.setSession(session?.accessToken)
+                        _currentUserId.value = session?.user?.id
+                        _currentScreen.value = "HOME"
+                        startDriverFeed()
+                    }
+                } catch (e: Exception) {
+                    // invalid code; stay on login
+                }
+            }
         }
     }
 
@@ -309,71 +392,79 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Interactive 'Offer Your Fare' Bidding Loop
+    // Interactive 'Offer Your Fare' Bidding Loop — real backend
     fun requestRide() {
-        if (_pickup.value == null || _dropoff.value == null) return
-        
+        val p = _pickup.value ?: return
+        val d = _dropoff.value ?: return
+        val uid = _currentUserId.value ?: return
+
         _biddingPhase.value = "SUBMITTED"
         _currentScreen.value = "RIDE_BIDDING"
         _driverOffers.value = emptyList()
+        _activeRequestId.value = null
 
         driverBidSimulationJob?.cancel()
         driverBidSimulationJob = viewModelScope.launch {
-            // Simulate waiting 2.5 seconds, then load bids
-            delay(2500)
-            _biddingPhase.value = "HAS_OFFERS"
-            
-            val baseUserOffer = _userOfferedFare.value.toDoubleOrNull() ?: _suggestedFare.value
-            
-            // Build 3 distinct Botswana-styled drivers bidding!
-            val offers = mutableListOf(
-                DriverOffer(
-                    driverId = "d_thabo",
-                    name = "Thabo Sekgopi",
-                    photoRes = "https://images.unsplash.com/photo-1542909168-82c3e7fdca5c",
-                    rating = 4.8f,
-                    vehicleModel = "Toyota Corolla (White)",
-                    vehiclePlate = "B 382 ADG",
-                    originalBid = baseUserOffer,
-                    offeredBid = baseUserOffer + 10.0, // Thabo counters +10 Pula
-                    etaMinutes = 3,
-                    heatPreference = "AC High / Ke e buletse haholo"
-                ),
-                DriverOffer(
-                    driverId = "d_neo",
-                    name = "Neo Kgetse",
-                    photoRes = "https://images.unsplash.com/photo-1544005313-94ddf0286df2",
-                    rating = 4.9f,
-                    vehicleModel = "Honda Fit (Sky Blue)",
-                    vehiclePlate = "B 911 ALK",
-                    originalBid = baseUserOffer,
-                    offeredBid = baseUserOffer, // Neo matches exactly!
-                    etaMinutes = 1,
-                    heatPreference = "AC Gentle / E thotse",
-                    hasFemaleOption = true
-                ),
-                DriverOffer(
-                    driverId = "d_kagiso",
-                    name = "Kagiso Phiri",
-                    photoRes = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d",
-                    rating = 4.6f,
-                    vehicleModel = "VW Polo (Silver)",
-                    vehiclePlate = "B 283 ARD",
-                    originalBid = baseUserOffer,
-                    offeredBid = (baseUserOffer - 5.0).coerceAtLeast(30.0), // Bargain lower bid!
-                    etaMinutes = 5,
-                    heatPreference = "Windows down / Lifensetere di buletswe"
+            // 1. Create the ride request on the real backend
+            try {
+                val resp = SupabaseClient.api.createRideRequest(
+                    SupabaseClient.authHeader(),
+                    body = com.example.data.remote.RideRequestInsert(
+                        riderId = uid,
+                        pickupLat = p.lat,
+                        pickupLng = p.lng,
+                        dropoffLat = d.lat,
+                        dropoffLng = d.lng,
+                        offeredFare = _userOfferedFare.value.toDoubleOrNull() ?: _suggestedFare.value,
+                        status = "OPEN"
+                    )
                 )
-            )
+                val req = resp.body()?.firstOrNull()
+                _activeRequestId.value = req?.id
+            } catch (e: Exception) {
+                _biddingPhase.value = "NONE"
+                return@launch
+            }
 
-            // Filter out non-female options if womenOnly is toggled
-            _driverOffers.value = if (_womenOnlyDriverFilter.value) {
-                offers.filter { it.hasFemaleOption }
-            } else {
-                offers
+            // 2. Poll for real driver bids
+            val requestId = _activeRequestId.value ?: return@launch
+            var waited = 0
+            while (waited < 30000) { // up to 30s
+                try {
+                    val resp = SupabaseClient.api.getBids(SupabaseClient.authHeader(), requestId)
+                    if (resp.isSuccessful) {
+                        val bids = resp.body() ?: emptyList()
+                        if (bids.isNotEmpty()) {
+                            _biddingPhase.value = "HAS_OFFERS"
+                            _driverOffers.value = bids.map { b ->
+                                DriverOffer(
+                                    driverId = b.driverId ?: "",
+                                    name = b.driverName ?: "Driver",
+                                    photoRes = "",
+                                    rating = (b.rating ?: 4.5).toFloat(),
+                                    vehicleModel = b.vehicleModel ?: "",
+                                    vehiclePlate = b.vehiclePlate ?: "",
+                                    originalBid = _userOfferedFare.value.toDoubleOrNull() ?: _suggestedFare.value,
+                                    offeredBid = b.bidAmount ?: 0.0,
+                                    etaMinutes = b.etaMinutes ?: 5,
+                                    heatPreference = "AC Gentle",
+                                    hasFemaleOption = b.isFemale ?: false
+                                )
+                            }.let { list ->
+                                if (_womenOnlyDriverFilter.value) list.filter { it.hasFemaleOption }
+                                else list
+                            }
+                        }
+                    }
+                } catch (e: Exception) { /* keep polling */ }
+                delay(2500)
+                waited += 2500
             }
         }
     }
+
+    private val _activeRequestId = MutableStateFlow<String?>(null)
+    val activeRequestId: StateFlow<String?> = _activeRequestId.asStateFlow()
 
     // Accept bid and start ride simulation
     fun acceptDriverOffer(offer: DriverOffer) {
@@ -394,6 +485,25 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
         _chatMessages.value = listOf(
             Pair("Driver", "Dumela! Ke tseleng go tla go go tsaya. I am on my way to pick you up.")
         )
+
+        // Record the accepted ride on the real backend
+        val reqId = _activeRequestId.value
+        val riderId = _currentUserId.value
+        if (reqId != null && riderId != null) {
+            viewModelScope.launch {
+                try {
+                    SupabaseClient.api.createRide(
+                        SupabaseClient.authHeader(),
+                        body = com.example.data.remote.RideInsert(
+                            requestId = reqId,
+                            driverId = offer.driverId,
+                            riderId = riderId,
+                            fare = offer.offeredBid
+                        )
+                    )
+                } catch (e: Exception) { /* offline: local history still records below */ }
+            }
+        }
 
         simulateActiveRideProgress()
     }
@@ -445,20 +555,25 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var activeRideId: String? = null
+
     fun sendChatMessage(msg: String) {
         if (msg.isBlank()) return
         _chatMessages.value = _chatMessages.value + Pair("Rider", msg)
-        
-        // Simulated responsive answer
+        val rideId = activeRideId ?: return
+        val uid = _currentUserId.value ?: return
         viewModelScope.launch {
-            delay(1500)
-            val responses = listOf(
-                "Ke gaufi le rre, ke feditse go tswa mo CBD.",
-                "Eya rra/mma, ke ya go bula masepala wa AC jaanong.",
-                "A o gaufi le letshwao la kgale? Ke tla ema foo.",
-                "Sharp! I am arriving in 30 seconds."
-            )
-            _chatMessages.value = _chatMessages.value + Pair("Driver", responses[Random.nextInt(responses.size)])
+            try {
+                SupabaseClient.api.sendMessage(
+                    SupabaseClient.authHeader(),
+                    body = com.example.data.remote.MessageInsert(
+                        rideId = rideId,
+                        senderId = uid,
+                        senderName = _profile.value.name,
+                        body = msg
+                    )
+                )
+            } catch (e: Exception) { /* offline */ }
         }
     }
 

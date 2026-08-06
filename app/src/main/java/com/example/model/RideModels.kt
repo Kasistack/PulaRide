@@ -1,7 +1,5 @@
 package com.example.model
 
-import com.example.ui.components.SimulatedDriver
-
 data class LocationItem(
     val name: String,
     val landmarkName: String,
@@ -67,7 +65,7 @@ object SetswanaTranslation {
         "otp_hint" to "We sent code 8392 to verify",
         "search_pickup" to "Where from? (Pickup)",
         "search_dropoff" to "Where to? (Destination)",
-        "popular_places" to "Popular Gaborone Places",
+        "popular_places" to "Popular Palapye Places",
         "low_data" to "Low-Data Mode",
         "language_lbl" to "Language / Puo",
         "bid_fare" to "Offer Your Fare",
@@ -75,7 +73,7 @@ object SetswanaTranslation {
         "fare_hint" to "Enter your bid (e.g., 45 P)",
         "pula_lbl" to "Pula (BWP)",
         "request_ride" to "Find Ride / Batla Koloi",
-        "searching_drivers" to "Looking for nearby drivers in Gabs...",
+        "searching_drivers" to "Looking for nearby drivers in Palapye...",
         "driver_offers" to "Driver Counter Offers (Bids)",
         "accept" to "Accept / Dumela",
         "decline" to "Decline / Gana",

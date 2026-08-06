@@ -32,7 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.model.*
-import com.example.ui.components.GaboroneMapView
+import com.example.ui.components.PalapyeMapView
 import com.example.viewmodel.RideViewModel
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -377,10 +377,10 @@ fun HomeScreen(viewModel: RideViewModel) {
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Embed the beautiful Gaborone Canvas map!
-        GaboroneMapView(
+        PalapyeMapView(
             pickup = pickup,
             dropoff = dropoff,
-            nearbyDrivers = if (lowData) emptyList() else viewModel.nearbyDriversMap
+            nearbyDrivers = if (lowData) emptyList() else viewModel.mapDrivers
         )
 
         // Top Controls Overlay
@@ -829,7 +829,7 @@ fun BiddingScreen(viewModel: RideViewModel) {
     var showExplanation by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        GaboroneMapView(
+        PalapyeMapView(
             pickup = pickup,
             dropoff = dropoff
         )
@@ -1092,10 +1092,9 @@ fun InRideScreen(viewModel: RideViewModel) {
     if (activeRide == null) return
 
     Box(modifier = Modifier.fillMaxSize()) {
-        GaboroneMapView(
+        PalapyeMapView(
             pickup = activeRide?.pickup,
-            dropoff = activeRide?.dropoff,
-            activeCarProgress = progress
+            dropoff = activeRide?.dropoff
         )
 
         // Safety Quick floating emergency triggers

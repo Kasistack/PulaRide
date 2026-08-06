@@ -303,14 +303,28 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
     fun sendOtp() {
         val phone = _loginPhone.value
         if (phone.isNotBlank()) {
-            // Use phone as email alias for Supabase Auth (no SMS cost): <phone>@pularide.local
-            val email = "$phone@pularide.local"
+            // Anonymous sign-in (free, no SMS/email delivery needed). Phone is
+            // captured into the local profile so the rider identity is real.
             viewModelScope.launch {
                 try {
-                    val resp = SupabaseClient.api.sendOtp(
-                        com.example.data.remote.AuthOtpRequest(email = email)
+                    val resp = SupabaseClient.api.signInAnonymous(
+                        com.example.data.remote.AuthAnonymousRequest()
                     )
-                    _isOtpSent.value = resp.isSuccessful
+                    if (resp.isSuccessful) {
+                        val session = resp.body()
+                        SupabaseClient.setSession(session?.accessToken)
+                        _currentUserId.value = session?.user?.id
+                        // Store the entered phone in the profile
+                        _profile.value = _profile.value.copy(
+                            phone = "+267 $phone",
+                            name = _profile.value.name
+                        )
+                        _isOtpSent.value = true
+                        _currentScreen.value = "HOME"
+                        startDriverFeed()
+                    } else {
+                        _isOtpSent.value = false
+                    }
                 } catch (e: Exception) {
                     _isOtpSent.value = false
                 }
@@ -323,26 +337,9 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun verifyOtp() {
-        val phone = _loginPhone.value
-        val code = _otpCode.value
-        if (phone.isNotBlank() && code.isNotBlank()) {
-            val email = "$phone@pularide.local"
-            viewModelScope.launch {
-                try {
-                    val resp = SupabaseClient.api.verifyOtp(
-                        com.example.data.remote.AuthVerifyRequest(email = email, token = code)
-                    )
-                    if (resp.isSuccessful) {
-                        val session = resp.body()
-                        SupabaseClient.setSession(session?.accessToken)
-                        _currentUserId.value = session?.user?.id
-                        _currentScreen.value = "HOME"
-                        startDriverFeed()
-                    }
-                } catch (e: Exception) {
-                    // invalid code; stay on login
-                }
-            }
+        // Anonymous flow needs no code verification; if a session exists, proceed.
+        if (SupabaseClient.accessToken != null) {
+            _currentScreen.value = "HOME"
         }
     }
 

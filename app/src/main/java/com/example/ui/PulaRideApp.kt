@@ -246,7 +246,7 @@ fun LoginScreen(viewModel: RideViewModel) {
                 Spacer(modifier = Modifier.height(16.dp))
 
                 if (!isOtpSent) {
-                    // Phone entry
+                    // Phone entry + instant anonymous sign-in (no SMS/OTP code needed)
                     OutlinedTextField(
                         value = phone,
                         onValueChange = { viewModel.setLoginPhone(it) },
@@ -303,55 +303,12 @@ fun LoginScreen(viewModel: RideViewModel) {
                         )
                     }
                 } else {
-                    // OTP Code entry
-                    OutlinedTextField(
-                        value = otp,
-                        onValueChange = { viewModel.setOtpCode(it) },
-                        label = { Text(SetswanaTranslation.translate("enter_otp", lang)) },
-                        placeholder = { Text("e.g. 8392") },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF2B9BEF),
-                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                            focusedLabelColor = Color(0xFF2B9BEF),
-                            unfocusedLabelColor = Color.White.copy(alpha = 0.4f)
-                        ),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("otp_code_input")
-                    )
-
+                    // Signed in (anonymous) — waiting for home transition
                     Text(
-                        text = SetswanaTranslation.translate("otp_hint", lang),
-                        color = Color(0xFF2B9BEF).copy(alpha = 0.8f),
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(top = 8.dp)
+                        text = "Re a go amogela... (Signing you in)",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 14.sp
                     )
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    Button(
-                        onClick = {
-                            keyboardController?.hide()
-                            viewModel.verifyOtp()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2B9BEF)),
-                        shape = RoundedCornerShape(8.dp),
-                        enabled = otp.isNotBlank(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp)
-                            .testTag("verify_otp_button")
-                    ) {
-                        Text(
-                            text = SetswanaTranslation.translate("verify_btn", lang),
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
-                    }
                 }
             }
         }

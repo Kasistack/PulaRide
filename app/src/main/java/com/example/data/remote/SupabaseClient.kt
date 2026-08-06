@@ -18,7 +18,7 @@ import com.example.BuildConfig
  * Real backend client for PulaRide.
  *
  * Everything here talks to a real Supabase project (free tier):
- *  - Auth: email OTP (real, free). SMS OTP would need a paid Twilio/Vonage provider.
+ *  - Auth: anonymous sign-in (real JWT, free, no SMS/email delivery needed).
  *  - Data: Postgres tables accessed over the REST API.
  *  - "Realtime" is implemented via short-interval polling of the REST API. This is
  *    genuinely real data from the server, free, and avoids the fragile WS handshake.
@@ -35,16 +35,8 @@ object SupabaseConfig {
 // ---- Moshi models ---------------------------------------------------------
 
 @JsonClass(generateAdapter = true)
-data class AuthOtpRequest(
-    val email: String,
-    @Json(name = "should_create_user") val shouldCreateUser: Boolean = true
-)
-
-@JsonClass(generateAdapter = true)
-data class AuthVerifyRequest(
-    val type: String = "email",
-    val email: String,
-    val token: String
+data class AuthAnonymousRequest(
+    val provider: String = "anonymous"
 )
 
 @JsonClass(generateAdapter = true)
@@ -57,7 +49,8 @@ data class AuthSession(
 @JsonClass(generateAdapter = true)
 data class AuthUser(
     val id: String? = null,
-    val email: String? = null
+    val email: String? = null,
+    val phone: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -184,11 +177,8 @@ data class RideInsert(
 // ---- Retrofit API ---------------------------------------------------------
 
 interface SupabaseApi {
-    @POST("/auth/v1/otp")
-    suspend fun sendOtp(@Body body: AuthOtpRequest): Response<Unit>
-
-    @POST("/auth/v1/verify")
-    suspend fun verifyOtp(@Body body: AuthVerifyRequest): Response<AuthSession>
+    @POST("/auth/v1/signup")
+    suspend fun signInAnonymous(@Body body: AuthAnonymousRequest): Response<AuthSession>
 
     @GET("/auth/v1/user")
     suspend fun getUser(@Header("Authorization") bearer: String): Response<AuthUser>

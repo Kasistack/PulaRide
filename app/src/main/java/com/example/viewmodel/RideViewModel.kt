@@ -318,6 +318,10 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setOtpCode(code: String) {
+        _otpCode.value = code
+    }
+
     fun verifyOtp() {
         val phone = _loginPhone.value
         val code = _otpCode.value

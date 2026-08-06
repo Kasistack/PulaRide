@@ -12,6 +12,8 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import retrofit2.http.*
 import java.util.concurrent.TimeUnit
 
+import com.example.BuildConfig
+
 /**
  * Real backend client for PulaRide.
  *

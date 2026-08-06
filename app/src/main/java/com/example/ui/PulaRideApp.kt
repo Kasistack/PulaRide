@@ -375,12 +375,13 @@ fun HomeScreen(viewModel: RideViewModel) {
 
     var activeSearchFocus by remember { mutableStateOf("NONE") } // "PICKUP", "DROPOFF", "NONE"
 
+    val nearbyDrivers by viewModel.mapDrivers.collectAsState()
     Box(modifier = Modifier.fillMaxSize()) {
-        // Embed the beautiful Gaborone Canvas map!
+        // Embed the beautiful Palapye Canvas map!
         PalapyeMapView(
             pickup = pickup,
             dropoff = dropoff,
-            nearbyDrivers = if (lowData) emptyList() else viewModel.mapDrivers
+            nearbyDrivers = if (lowData) emptyList() else nearbyDrivers
         )
 
         // Top Controls Overlay

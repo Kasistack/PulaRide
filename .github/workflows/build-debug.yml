@@ -19,21 +19,18 @@ jobs:
           java-version: 17
 
       - name: Write Supabase credentials to .env
-        working-directory: PulaRideSrc
         run: |
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" > .env
           echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}" >> .env
 
       - name: Grant execute permission for gradlew
-        working-directory: PulaRideSrc
         run: chmod +x ./gradlew
 
       - name: Build debug APK
-        working-directory: PulaRideSrc
         run: ./gradlew assembleDebug --no-daemon
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: pularide-debug-apk
-          path: PulaRideSrc/app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/debug/*.apk

@@ -9,6 +9,8 @@ import com.example.data.RideRepository
 import com.example.data.remote.SupabaseClient
 import com.example.data.remote.OsrmClient
 import com.example.data.remote.SmegaClient
+import com.example.data.remote.RideFunctionClient
+import com.example.data.remote.CreateRideRequest
 import com.example.data.remote.PaymentRequest
 import com.example.model.*
 import com.example.ui.components.MapDriver

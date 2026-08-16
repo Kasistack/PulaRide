@@ -1818,26 +1818,22 @@ fun PaymentsScreen(viewModel: RideViewModel) {
 fun SmegaCredentialsDialog(viewModel: RideViewModel, onDismiss: () -> Unit) {
     val creds by viewModel.smegaCredentials.collectAsState()
     val lang by viewModel.language.collectAsState()
-    var apiKey by remember { mutableStateOf(creds.apiKey) }
-    var appId by remember { mutableStateOf(creds.appId) }
-    var secret by remember { mutableStateOf(creds.secretToken) }
+    var payerId by remember { mutableStateOf(creds.payerId) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(onClick = {
-                viewModel.setSmegaCredentials(apiKey.trim(), appId.trim(), secret.trim())
+                viewModel.setSmegaCredentials(payerId.trim())
                 onDismiss()
             }) { Text("Save", color = Color(0xFF2B9BEF)) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-        title = { Text("Smega Merchant (BTC)", color = Color.White) },
+        title = { Text("Smega Wallet (BTC)", color = Color.White) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Free from smegaapi.btc.bw after registering. Your API key, app id and secret token.", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
-                OutlinedTextField(value = apiKey, onValueChange = { apiKey = it }, label = { Text("API Key (WalletGateway.xxxx)") }, singleLine = true, colors = tfColors())
-                OutlinedTextField(value = appId, onValueChange = { appId = it }, label = { Text("App ID") }, singleLine = true, colors = tfColors())
-                OutlinedTextField(value = secret, onValueChange = { secret = it }, label = { Text("Secret Token") }, singleLine = true, colors = tfColors())
+                Text("Enter your own Smega number (7xxxxxxxxx). Payments are processed securely by PulaRide's server — the merchant secret is never stored on your phone.", color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+                OutlinedTextField(value = payerId, onValueChange = { payerId = it }, label = { Text("My Smega number") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), singleLine = true, colors = tfColors())
             }
         },
         containerColor = Color(0xFF1E293B)
@@ -1860,7 +1856,7 @@ fun SmegaTopUpDialog(viewModel: RideViewModel, onDismiss: () -> Unit) {
                 onClick = {
                     val amt = amount.toDoubleOrNull() ?: 0.0
                     if (amt > 0 && payerId.isNotBlank() && pin.isNotBlank()) {
-                        viewModel.topUpWallet(amt, payerId.trim(), pin.trim())
+                        viewModel.topUpWallet(amt, pin.trim())
                     }
                 }
             ) { Text(if (payState == "PROCESSING") "Processing..." else "Pay with Smega", color = Color(0xFF2B9BEF)) }
@@ -1870,7 +1866,6 @@ fun SmegaTopUpDialog(viewModel: RideViewModel, onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Amount (BWP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true, colors = tfColors())
-                OutlinedTextField(value = payerId, onValueChange = { payerId = it }, label = { Text("Smega number (7xxxxxxxxx)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), singleLine = true, colors = tfColors())
                 OutlinedTextField(value = pin, onValueChange = { pin = it }, label = { Text("Smega PIN") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword), singleLine = true, colors = tfColors())
                 if (payState == "SUCCESS") Text(payMsg, color = Color(0xFF10B981), fontSize = 12.sp)
                 if (payState == "FAILED") Text(payMsg, color = Color(0xFFFF5555), fontSize = 12.sp)

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PulaRide network security policy.
+  - Cleartext (HTTP) is globally disabled in the manifest; this is a belt-and-braces
+    enforcement. ALL traffic to Supabase, Smega (broker), and OSRM must be HTTPS.
+  - Certificate transparency + strict pinning is recommended before production; the
+    <pin> entries below are placeholders — replace with your real Supabase/backend
+    cert public-key hashes (base64 of SHA-256 of the SPKI) before shipping.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Example pinning for the Supabase project host. Duplicate per backend host. -->
+    <!--
+    <domain-config>
+        <domain includeSubdomains="true">your-project.supabase.co</domain>
+        <pin digest="SHA-256">REPLACE_WITH_PUBKEY_HASH_BASE64==</pin>
+        <pin digest="SHA-256">REPLACE_WITH_BACKUP_HASH_BASE64==</pin>
+    </domain-config>
+    -->
+</network-security-config>

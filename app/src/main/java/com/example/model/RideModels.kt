@@ -20,17 +20,20 @@ enum class PaymentMode(val displayName: String, val providerName: String) {
     WALLET("Digital Wallet", "PulaRide Wallet")
 }
 
-/** Smega merchant credentials (free, from https://smegaapi.btc.bw after register). */
+/**
+ * Local payment profile. The Smega MERCHANT secret lives ONLY on the backend
+ * (Supabase Edge Function `smega-payment`). The app stores only the rider's own
+ * Smega payer id for convenience — NEVER the PIN or any merchant secret.
+ */
 data class SmegaCredentials(
-    val apiKey: String = "",        // WalletGateway.xxxx
-    val appId: String = "",         // your app id
-    val secretToken: String = ""    // your secret token
+    val payerId: String = ""   // rider's own 7xxxxxxxxx Smega number
 )
 
 val PaymentMode.isSmega: Boolean get() = this == PaymentMode.SMEGA
 
 data class DriverOffer(
     val driverId: String,
+    val bidId: String = "",        // server bid row id, used for validated ride creation
     val name: String,
     val photoRes: String, // visual representation
     val rating: Float,

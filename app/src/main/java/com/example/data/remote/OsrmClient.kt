@@ -8,51 +8,59 @@ import org.osmdroid.util.GeoPoint
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
-import retrofit2.http.GET
-import retrofit2.http.Path
+import okhttp3.Interceptor
+import okhttp3.OkHttpClient
 
 /**
- * Real road routing via the free public OSRM demo server (router.project-osrm.org).
- * No API key, no cost. Returns the actual road geometry between two points so the
- * map draws a real route instead of a straight line.
- *
- * For production you can self-host OSRM or use a free Valhalla/GraphHopper instance;
- * only OSRM_BASE_URL needs to change.
+ * Road routing. Routes are computed by the Supabase Edge Function `osrm-route`,
+ * which proxies to an OSRM instance YOU control (set OSRM_BASE_URL project
+ * secret). User origin/destination pairs never leave your infrastructure to a
+ * third-party demo server.
  */
 object OsrmConfig {
-    const val BASE_URL = "https://router.project-osrm.org/"
+    val BASE_URL: String get() = SupabaseConfig.url
 }
 
 @JsonClass(generateAdapter = true)
-data class OsrmResponse(
-    val code: String? = null,
-    val routes: List<OsrmRoute>? = null
-)
-
-@JsonClass(generateAdapter = true)
-data class OsrmRoute(
-    val distance: Double? = null,
-    val duration: Double? = null,
-    val geometry: OsrmGeometry? = null
-)
-
-@JsonClass(generateAdapter = true)
-data class OsrmGeometry(
-    val coordinates: List<List<Double>>? = null // [lng, lat]
+data class OsrmRouteResponse(
+    val distanceKm: Double? = null,
+    val durationMin: Int? = null,
+    val geometry: OsrmGeometry? = null,
+    val error: String? = null
 )
 
 interface OsrmApi {
-    // coords are lng,lat per OSRM spec
-    @GET("route/v1/driving/{coords}?overview=full&geometries=geojson")
-    suspend fun route(@Path("coords", encoded = true) coords: String): Response<OsrmResponse>
+    @Headers("Content-Type: application/json")
+    @POST("functions/v1/osrm-route")
+    suspend fun route(@Body body: OsrmRouteRequest): Response<OsrmRouteResponse>
 }
+
+@JsonClass(generateAdapter = true)
+data class OsrmRouteRequest(
+    val pickup: List<Double>,   // [lng, lat]
+    val dropoff: List<Double>   // [lng, lat]
+)
 
 object OsrmClient {
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
 
     private val retrofit = Retrofit.Builder()
-        .baseUrl(OsrmConfig.BASE_URL)
+        .baseUrl("${OsrmConfig.BASE_URL}/")
         .addConverterFactory(MoshiConverterFactory.create(moshi))
+        .client(
+            OkHttpClient.Builder()
+                .addInterceptor(Interceptor { chain ->
+                    chain.proceed(
+                        chain.request().newBuilder()
+                            .addHeader("apikey", SupabaseConfig.anonKey)
+                            .addHeader("Authorization", SupabaseClient.authHeader().let {
+                                if (it.startsWith("Bearer ")) it else "Bearer $it"
+                            })
+                            .build()
+                    )
+                })
+                .build()
+        )
         .build()
 
     private val api = retrofit.create(OsrmApi::class.java)
@@ -62,12 +70,15 @@ object OsrmClient {
      * pickup to dropoff, or null if the request fails.
      */
     suspend fun getRoute(pickup: GeoPoint, dropoff: GeoPoint): List<GeoPoint>? {
-        val coords = "${pickup.longitude},${pickup.latitude};${dropoff.longitude},${dropoff.latitude}"
         return try {
-            val resp = api.route(coords)
-            val route = resp.body()?.routes?.firstOrNull()
-            val coordsList = route?.geometry?.coordinates ?: return null
-            coordsList.map { c -> GeoPoint(c[1], c[0]) }
+            val resp = api.route(
+                OsrmRouteRequest(
+                    pickup = listOf(pickup.longitude, pickup.latitude),
+                    dropoff = listOf(dropoff.longitude, dropoff.latitude)
+                )
+            )
+            val geom = resp.body()?.geometry?.coordinates ?: return null
+            geom.map { c -> GeoPoint(c[1], c[0]) }
         } catch (e: Exception) {
             null
         }
@@ -75,12 +86,16 @@ object OsrmClient {
 
     /** Road distance in km and ETA in minutes, or null on failure. */
     suspend fun getRouteInfo(pickup: GeoPoint, dropoff: GeoPoint): Pair<Double, Int>? {
-        val coords = "${pickup.longitude},${pickup.latitude};${dropoff.longitude},${dropoff.latitude}"
         return try {
-            val resp = api.route(coords)
-            val route = resp.body()?.routes?.firstOrNull() ?: return null
-            val km = (route.distance ?: 0.0) / 1000.0
-            val min = ((route.duration ?: 0.0) / 60.0).toInt()
+            val resp = api.route(
+                OsrmRouteRequest(
+                    pickup = listOf(pickup.longitude, pickup.latitude),
+                    dropoff = listOf(dropoff.longitude, dropoff.latitude)
+                )
+            )
+            val body = resp.body() ?: return null
+            val km = body.distanceKm ?: return null
+            val min = body.durationMin ?: return null
             Pair(km, min)
         } catch (e: Exception) {
             null

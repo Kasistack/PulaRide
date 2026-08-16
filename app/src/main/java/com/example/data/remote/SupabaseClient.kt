@@ -165,15 +165,6 @@ data class RideCreatedRow(
     val id: String? = null
 )
 
-@JsonClass(generateAdapter = true)
-data class RideInsert(
-    @Json(name = "request_id") val requestId: String,
-    @Json(name = "driver_id") val driverId: String,
-    @Json(name = "rider_id") val riderId: String,
-    val status: String = "EN_ROUTE_PICKUP",
-    val fare: Double
-)
-
 // ---- Retrofit API ---------------------------------------------------------
 
 interface SupabaseApi {
@@ -220,13 +211,6 @@ interface SupabaseApi {
         @Body body: BidInsert
     ): Response<Unit>
 
-    @POST("/rest/v1/rides")
-    suspend fun createRide(
-        @Header("Authorization") bearer: String,
-        @Header("Prefer") prefer: String = "return=representation",
-        @Body body: RideInsert
-    ): Response<List<RideCreatedRow>>
-
     @GET("/rest/v1/messages")
     suspend fun getMessages(
         @Header("Authorization") bearer: String,
@@ -241,6 +225,71 @@ interface SupabaseApi {
         @Header("Prefer") prefer: String = "return=minimal",
         @Body body: MessageInsert
     ): Response<Unit>
+
+    // Wallet balance (owned by caller; RLS enforces owner-only read).
+    @GET("/rest/v1/wallets")
+    suspend fun getWallet(
+        @Header("Authorization") bearer: String,
+        @Query("select", encoded = true) select: String = "balance",
+        @Query("limit", encoded = true) limit: Int = 1
+    ): Response<List<WalletRow>>
+}
+
+@JsonClass(generateAdapter = true)
+data class WalletRow(
+    val balance: Double? = null
+)
+
+// ---- Ride creation (server-validated; no direct client INSERT) ------------
+
+interface RideFunctionApi {
+    @Headers("Content-Type: application/json")
+    @POST("functions/v1/create-ride")
+    suspend fun createRide(
+        @Body body: CreateRideRequest
+    ): Response<CreateRideResponse>
+}
+
+@JsonClass(generateAdapter = true)
+data class CreateRideRequest(
+    val requestId: String,
+    val bidId: String
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateRideResponse(
+    val ride: RideCreatedRow? = null,
+    val error: String? = null
+)
+
+object RideFunctionClient {
+    private val moshi = com.squareup.moshi.Moshi.Builder()
+        .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
+        .build()
+
+    val api: RideFunctionApi by lazy {
+        retrofit2.Retrofit.Builder()
+            .baseUrl("${SupabaseConfig.url}/")
+            .addConverterFactory(
+                retrofit2.converter.moshi.MoshiConverterFactory.create(moshi)
+            )
+            .client(
+                okhttp3.OkHttpClient.Builder()
+                    .addInterceptor(okhttp3.Interceptor { chain ->
+                        chain.proceed(
+                            chain.request().newBuilder()
+                                .addHeader("apikey", SupabaseConfig.anonKey)
+                                .addHeader("Authorization", SupabaseClient.authHeader().let {
+                                    if (it.startsWith("Bearer ")) it else "Bearer $it"
+                                })
+                                .build()
+                        )
+                    })
+                    .build()
+            )
+            .build()
+            .create(RideFunctionApi::class.java)
+    }
 }
 
 // ---- Auth token holder + client ------------------------------------------

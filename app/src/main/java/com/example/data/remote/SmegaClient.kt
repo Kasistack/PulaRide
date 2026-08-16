@@ -6,62 +6,48 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.Headers
 import retrofit2.http.POST
+import okhttp3.Interceptor
+import okhttp3.OkHttpClient
 
 /**
- * Real Smega (BTC Botswana) payment client — free JSON API, no card, no paid gateway.
- * Docs: https://smegaapi.btc.bw/documentation.html
+ * PulaRide payment client — talks ONLY to the Supabase Edge Function
+ * `smega-payment`, which holds the merchant secret server-side.
  *
- * Production endpoint:  https://smegaapi.btc.bw/api/transact/jsonTxn
- * Sandbox (testing):    same host is used for tests after registering a test account.
- *
- * The payer authorises the debit from their Smega wallet using their Smega PIN.
- * A successful charge has txnStatus == "AUTHORIZED".
+ * The app NEVER sees the Smega API key / app id / secret token. It only sends
+ * the rider's own payerId + PIN and the amount; the function authorises with
+ * Smega and then credits/debits the user's Supabase wallet (single source of
+ * truth for balance). See supabase/functions/smega-payment/index.ts.
  */
+
 object SmegaConfig {
-    const val BASE_URL = "https://smegaapi.btc.bw/"
+    // Functions live on the Supabase project URL.
+    val baseUrl: String get() = SupabaseConfig.url
 }
 
 @JsonClass(generateAdapter = true)
-data class SmegaMerchantId(
-    val apiKey: String,
-    val appId: String,
-    @Json(name = "secretToken") val secretToken: String
-)
-
-@JsonClass(generateAdapter = true)
-data class SmegaCustomer(
-    @Json(name = "payerId") val payerId: String,
+data class PaymentRequest(
+    val amount: Double,
+    val payerId: String,
     val pin: String,
-    val amount: Double
+    val kind: String = "TOPUP",   // "TOPUP" | "CHARGE"
+    val ref: String? = null
 )
 
 @JsonClass(generateAdapter = true)
-data class SmegaTxnRequest(
-    @Json(name = "merchantId") val merchantId: SmegaMerchantId,
-    val customer: SmegaCustomer,
-    @Json(name = "gatewayId") val gatewayId: String = "SMEGA"
-)
-
-@JsonClass(generateAdapter = true)
-data class SmegaTxnData(
-    @Json(name = "payerId") val payerId: String? = null,
-    val amount: Double? = null,
-    val approved: Boolean? = null
-)
-
-@JsonClass(generateAdapter = true)
-data class SmegaTxnResponse(
-    val id: Long? = null,
-    @Json(name = "txnData") val txnData: SmegaTxnData? = null,
-    val status: Int? = null,
-    @Json(name = "txnStatus") val txnStatus: String? = null,
+data class PaymentResponse(
+    val status: String? = null,   // "SUCCESS"
+    val balance: Double? = null,
+    val ref: String? = null,
+    val error: String? = null,
     val message: String? = null
 )
 
-interface SmegaApi {
+interface PaymentApi {
     @Headers("Content-Type: application/json")
-    @POST("api/transact/jsonTxn")
-    suspend fun charge(@Body body: SmegaTxnRequest): Response<SmegaTxnResponse>
+    @POST("functions/v1/smega-payment")
+    suspend fun charge(
+        @Body body: PaymentRequest
+    ): Response<PaymentResponse>
 }
 
 object SmegaClient {
@@ -69,13 +55,27 @@ object SmegaClient {
         .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
         .build()
 
-    val api: SmegaApi by lazy {
+    val api: PaymentApi by lazy {
         retrofit2.Retrofit.Builder()
-            .baseUrl(SmegaConfig.BASE_URL)
+            .baseUrl("${SmegaConfig.baseUrl}/")
             .addConverterFactory(
                 retrofit2.converter.moshi.MoshiConverterFactory.create(moshi)
             )
+            .client(
+                okhttp3.OkHttpClient.Builder()
+                    .addInterceptor(okhttp3.Interceptor { chain ->
+                        chain.proceed(
+                            chain.request().newBuilder()
+                                .addHeader("apikey", SupabaseConfig.anonKey)
+                                .addHeader("Authorization", SupabaseClient.authHeader().let {
+                                    if (it.startsWith("Bearer ")) it else "Bearer $it"
+                                })
+                                .build()
+                        )
+                    })
+                    .build()
+            )
             .build()
-            .create(SmegaApi::class.java)
+            .create(PaymentApi::class.java)
     }
 }

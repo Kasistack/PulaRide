@@ -1,4 +1,4 @@
-name: Android Debug Build
+name: Android Build (Debug APK)
 
 on:
   push:
@@ -8,30 +8,49 @@ on:
   workflow_dispatch:
 
 jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
   build:
+    needs: secret-scan
     runs-on: ubuntu-latest
     permissions:
       contents: read
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
 
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v4
+      # Build a DEBUG APK. The Supabase URL/anon key are injected from .env by the
+      # secrets-gradle-plugin. If the secrets are unset, the plugin falls back to
+      # .env.example placeholders and the build still succeeds (app won't reach a
+      # real backend until you set SUPABASE_URL / SUPABASE_ANON_KEY in repo secrets).
+      - name: Write Supabase credentials to .env (if provided)
+        run: |
+          {
+            echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}"
+            echo "SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}"
+          } > .env
 
-    - name: Build debug APK
-      run: gradle assembleDebug
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
 
-    - name: Upload debug APK artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: pularide-debug-apk
-        path: app/build/outputs/apk/debug/*.apk
-        compression-level: 6
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: pularide-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 30

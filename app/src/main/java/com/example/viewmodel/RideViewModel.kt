@@ -9,10 +9,7 @@ import com.example.data.RideRepository
 import com.example.data.remote.SupabaseClient
 import com.example.data.remote.OsrmClient
 import com.example.data.remote.SmegaClient
-import com.example.data.remote.SmegaCredentials
-import com.example.data.remote.SmegaTxnRequest
-import com.example.data.remote.SmegaMerchantId
-import com.example.data.remote.SmegaCustomer
+import com.example.data.remote.PaymentRequest
 import com.example.model.*
 import com.example.ui.components.MapDriver
 import androidx.compose.ui.graphics.Color
@@ -108,7 +105,7 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
     private val _walletBalance = MutableStateFlow(0.0)
     val walletBalance: StateFlow<Double> = _walletBalance.asStateFlow()
 
-    // Smega (BTC) merchant credentials — entered once in the app, free from smegaapi.btc.bw
+    // Smega payment profile — only the rider's own payer id (never a secret).
     private val _smegaCredentials = MutableStateFlow(SmegaCredentials())
     val smegaCredentials: StateFlow<SmegaCredentials> = _smegaCredentials.asStateFlow()
 
@@ -118,30 +115,39 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
     private val _smegaPayMessage = MutableStateFlow("")
     val smegaPayMessage: StateFlow<String> = _smegaPayMessage.asStateFlow()
 
-    fun setSmegaCredentials(apiKey: String, appId: String, secretToken: String) {
-        _smegaCredentials.value = SmegaCredentials(apiKey, appId, secretToken)
+    fun setSmegaCredentials(payerId: String) {
+        _smegaCredentials.value = SmegaCredentials(payerId.trim())
     }
 
-    /** Top up the PulaRide wallet from the rider's Smega wallet. */
-    fun topUpWallet(amount: Double, payerId: String, pin: String) {
+    /** Refresh the wallet balance from Supabase (source of truth). */
+    fun refreshWallet() {
+        viewModelScope.launch {
+            try {
+                val uid = currentUserId() ?: return@launch
+                val resp = SupabaseClient.api.getWallet(SupabaseClient.authHeader())
+                val bal = resp.body()?.firstOrNull()?.balance
+                if (bal != null) _walletBalance.value = bal
+            } catch (e: Exception) { /* keep last known */ }
+        }
+    }
+
+    /** Top up the PulaRide wallet via the backend Smega broker (secret stays server-side). */
+    fun topUpWallet(amount: Double, pin: String) {
+        val payerId = _smegaCredentials.value.payerId
         viewModelScope.launch {
             _smegaPayState.value = "PROCESSING"
             try {
-                val c = _smegaCredentials.value
                 val resp = SmegaClient.api.charge(
-                    SmegaTxnRequest(
-                        merchantId = SmegaMerchantId(c.apiKey, c.appId, c.secretToken),
-                        customer = SmegaCustomer(payerId = payerId, pin = pin, amount = amount)
-                    )
+                    PaymentRequest(amount = amount, payerId = payerId, pin = pin, kind = "TOPUP")
                 )
                 val body = resp.body()
-                if (resp.isSuccessful && body?.txnStatus == "AUTHORIZED") {
-                    _walletBalance.value = _walletBalance.value + amount
+                if (resp.isSuccessful && body?.status == "SUCCESS") {
+                    _walletBalance.value = body.balance ?: _walletBalance.value
                     _smegaPayState.value = "SUCCESS"
-                    _smegaPayMessage.value = body.message ?: "Top-up successful"
+                    _smegaPayMessage.value = body.ref ?: "Top-up successful"
                 } else {
                     _smegaPayState.value = "FAILED"
-                    _smegaPayMessage.value = body?.message ?: "Payment not authorized"
+                    _smegaPayMessage.value = body?.message ?: body?.error ?: "Payment not authorized"
                 }
             } catch (e: Exception) {
                 _smegaPayState.value = "FAILED"
@@ -150,27 +156,25 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Pay for a completed ride via Smega. Deducts from wallet if enough, else charges Smega. */
-    fun payWithSmega(amount: Double, payerId: String, pin: String): Boolean {
+    /** Pay for a completed ride via the backend broker. Returns true on success. */
+    fun payWithSmega(amount: Double, pin: String): Boolean {
+        val payerId = _smegaCredentials.value.payerId
         var ok = false
         viewModelScope.launch {
             _smegaPayState.value = "PROCESSING"
             try {
-                val c = _smegaCredentials.value
                 val resp = SmegaClient.api.charge(
-                    SmegaTxnRequest(
-                        merchantId = SmegaMerchantId(c.apiKey, c.appId, c.secretToken),
-                        customer = SmegaCustomer(payerId = payerId, pin = pin, amount = amount)
-                    )
+                    PaymentRequest(amount = amount, payerId = payerId, pin = pin, kind = "CHARGE")
                 )
                 val body = resp.body()
-                if (resp.isSuccessful && body?.txnStatus == "AUTHORIZED") {
+                if (resp.isSuccessful && body?.status == "SUCCESS") {
+                    _walletBalance.value = body.balance ?: _walletBalance.value
                     _smegaPayState.value = "SUCCESS"
-                    _smegaPayMessage.value = body.message ?: "Payment successful"
+                    _smegaPayMessage.value = body.ref ?: "Payment successful"
                     ok = true
                 } else {
                     _smegaPayState.value = "FAILED"
-                    _smegaPayMessage.value = body?.message ?: "Payment not authorized"
+                    _smegaPayMessage.value = body?.message ?: body?.error ?: "Payment not authorized"
                 }
             } catch (e: Exception) {
                 _smegaPayState.value = "FAILED"
@@ -523,6 +527,7 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
                             _driverOffers.value = bids.map { b ->
                                 DriverOffer(
                                     driverId = b.driverId ?: "",
+                                    bidId = b.id ?: "",
                                     name = b.driverName ?: "Driver",
                                     photoRes = "",
                                     rating = (b.rating ?: 4.5).toFloat(),
@@ -550,6 +555,9 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
     private val _activeRequestId = MutableStateFlow<String?>(null)
     val activeRequestId: StateFlow<String?> = _activeRequestId.asStateFlow()
 
+    // The bid the rider ultimately accepts (server-validated against the request).
+    private val _activeBidId = MutableStateFlow<String?>(null)
+
     // Accept bid and start ride simulation
     fun acceptDriverOffer(offer: DriverOffer) {
         val p = _pickup.value ?: return
@@ -564,28 +572,29 @@ class RideViewModel(application: Application) : AndroidViewModel(application) {
             status = "EN_ROUTE_PICKUP",
             progress = 0f
         )
+        _activeBidId.value = offer.bidId   // used by the server-validated create-ride call
         _currentScreen.value = "IN_RIDE"
         _rideProgress.value = 0f
         _chatMessages.value = listOf(
             Pair("Driver", "Dumela! Ke tseleng go tla go go tsaya. I am on my way to pick you up.")
         )
 
-        // Record the accepted ride on the real backend
+        // Record the accepted ride via the SERVER-VALIDATED broker function.
+        // The function pins rider_id from the request and fare from the accepted
+        // bid, so a driver cannot forge a ride or an arbitrary fare.
         val reqId = _activeRequestId.value
-        val riderId = _currentUserId.value
-        if (reqId != null && riderId != null) {
+        val bidId = _activeBidId.value
+        if (reqId != null && bidId != null) {
             viewModelScope.launch {
                 try {
-                    val resp = SupabaseClient.api.createRide(
-                        SupabaseClient.authHeader(),
-                        body = com.example.data.remote.RideInsert(
-                            requestId = reqId,
-                            driverId = offer.driverId,
-                            riderId = riderId,
-                            fare = offer.offeredBid
-                        )
+                    val resp = RideFunctionClient.api.createRide(
+                        CreateRideRequest(requestId = reqId, bidId = bidId)
                     )
-                    activeRideId = resp.body()?.firstOrNull()?.id
+                    activeRideId = resp.body()?.ride?.id
+                    if (resp.body()?.error != null) {
+                        // surface but keep local simulation; backend is source of truth
+                        _smegaPayMessage.value = "Ride confirm: ${resp.body()?.error}"
+                    }
                 } catch (e: Exception) { /* offline: local history still records below */ }
             }
         }
